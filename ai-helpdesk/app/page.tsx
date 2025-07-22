@@ -7,6 +7,12 @@ interface Message {
   imageUrl?: string;
 }
 
+// For OpenAI API
+interface OpenAIMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -16,6 +22,13 @@ export default function Home() {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [chatHistory, setChatHistory] = useState<OpenAIMessage[]>([
+    {
+      role: "system",
+      content:
+        "You are a helpful IT support assistant for non-technical users. Explain things simply and step by step.",
+    },
+  ]);
 
   const handleSend = async () => {
     if (!input && !image) return;
@@ -59,17 +72,41 @@ export default function Home() {
       setIsLoading(false);
       return;
     }
-    // Placeholder for chat-only (no image) response
-    setTimeout(() => {
+
+    // Text-only chat: send to /api/chat with history
+    const newHistory = [
+      ...chatHistory,
+      { role: "user", content: input },
+    ];
+    setChatHistory(newHistory);
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: newHistory }),
+      });
+      const data = await res.json();
       setMessages((msgs) => [
         ...msgs,
         {
           sender: "ai",
-          text: `AI: (Chat response to "${input}")`,
+          text: data.result || data.error || "Sorry, I couldn't generate a response.",
         },
       ]);
-      setIsLoading(false);
-    }, 1500);
+      setChatHistory([
+        ...newHistory,
+        { role: "assistant", content: data.result || "" },
+      ]);
+    } catch (err: any) {
+      setMessages((msgs) => [
+        ...msgs,
+        {
+          sender: "ai",
+          text: "Sorry, there was an error getting a response from the AI.",
+        },
+      ]);
+    }
+    setIsLoading(false);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -254,9 +291,9 @@ export default function Home() {
                 </div>
               </div>
             ))}
-            {isLoading && (
+            {isLoading && !image && (
               <div style={{ color: "#888", textAlign: "center", marginTop: 16 }}>
-                AI is thinking...
+                <span aria-live="polite">AI is thinking...</span>
               </div>
             )}
           </div>
