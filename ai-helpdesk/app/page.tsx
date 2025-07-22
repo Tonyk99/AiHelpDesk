@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import styles from "./page.module.css";
 
 interface Message {
@@ -29,6 +29,40 @@ export default function Home() {
         "You are a helpful IT support assistant for non-technical users. Explain things simply and step by step.",
     },
   ]);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    const savedMessages = localStorage.getItem("ai-helpdesk-messages");
+    const savedChatHistory = localStorage.getItem("ai-helpdesk-chatHistory");
+    if (savedMessages) {
+      setMessages(JSON.parse(savedMessages));
+    }
+    if (savedChatHistory) {
+      setChatHistory(JSON.parse(savedChatHistory));
+    }
+  }, []);
+
+  // Save to localStorage after each change
+  useEffect(() => {
+    localStorage.setItem("ai-helpdesk-messages", JSON.stringify(messages));
+  }, [messages]);
+  useEffect(() => {
+    localStorage.setItem("ai-helpdesk-chatHistory", JSON.stringify(chatHistory));
+  }, [chatHistory]);
+
+  // Clear chat handler
+  const handleClearChat = () => {
+    setMessages([]);
+    setChatHistory([
+      {
+        role: "system",
+        content:
+          "You are a helpful IT support assistant for non-technical users. Explain things simply and step by step.",
+      },
+    ]);
+    localStorage.removeItem("ai-helpdesk-messages");
+    localStorage.removeItem("ai-helpdesk-chatHistory");
+  };
 
   const handleSend = async () => {
     if (!input && !image) return;
@@ -203,6 +237,17 @@ export default function Home() {
         <p style={{ fontSize: 18, marginBottom: 24 }}>
           Describe your problem or upload a screenshot. Our AI will help you step by step.
         </p>
+        <div style={{ marginBottom: 12 }}>
+          <button
+            className={styles.bigButton}
+            style={{ background: "#f59e42", color: "#222" }}
+            onClick={handleClearChat}
+            title="Clear the chat and start over"
+            disabled={isLoading}
+          >
+            🗑️ Clear Chat
+          </button>
+        </div>
         {/* Screen sharing controls */}
         <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
           {!isScreenSharing && (
