@@ -12,6 +12,9 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSend = async () => {
@@ -75,6 +78,87 @@ export default function Home() {
     }
   };
 
+  // Screen sharing logic
+  const handleStartScreenShare = async () => {
+    try {
+      const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
+      setScreenStream(stream);
+      setIsScreenSharing(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      // Stop sharing if user closes the share dialog
+      stream.getVideoTracks()[0].addEventListener("ended", () => {
+        handleStopScreenShare();
+      });
+    } catch (err) {
+      // User cancelled or error
+    }
+  };
+
+  const handleStopScreenShare = () => {
+    if (screenStream) {
+      screenStream.getTracks().forEach((track) => track.stop());
+    }
+    setScreenStream(null);
+    setIsScreenSharing(false);
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  // Optional: Capture screenshot from screen share
+  const handleCaptureScreenShotFromStream = async () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      setIsLoading(true);
+      setMessages((msgs) => [
+        ...msgs,
+        {
+          sender: "user",
+          text: input || "(Screenshot from screen share)",
+          imageUrl: URL.createObjectURL(blob),
+        },
+      ]);
+      // Send to /api/vision
+      const formData = new FormData();
+      formData.append("image", blob, "screenshot.png");
+      formData.append("prompt", input || "Please help me with this issue.");
+      try {
+        const res = await fetch("/api/vision", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        setMessages((msgs) => [
+          ...msgs,
+          {
+            sender: "ai",
+            text: data.result || data.error || "Sorry, I couldn't analyze the screenshot.",
+          },
+        ]);
+      } catch (err: any) {
+        setMessages((msgs) => [
+          ...msgs,
+          {
+            sender: "ai",
+            text: "Sorry, there was an error analyzing your screenshot.",
+          },
+        ]);
+      }
+      setIsLoading(false);
+    }, "image/png");
+  };
+
   return (
     <div className={styles.page}>
       <main className={styles.main}>
@@ -82,6 +166,47 @@ export default function Home() {
         <p style={{ fontSize: 18, marginBottom: 24 }}>
           Describe your problem or upload a screenshot. Our AI will help you step by step.
         </p>
+        {/* Screen sharing controls */}
+        <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+          {!isScreenSharing && (
+            <button
+              className={styles.bigButton}
+              style={{ background: "#10b981" }}
+              onClick={handleStartScreenShare}
+              title="Share your screen with the AI assistant"
+            >
+              🖥️ Share My Screen
+            </button>
+          )}
+          {isScreenSharing && (
+            <>
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                style={{ width: 160, height: 100, borderRadius: 8, border: "2px solid #6366f1", background: "#222" }}
+                aria-label="Screen share preview"
+              />
+              <button
+                className={styles.bigButton}
+                style={{ background: "#ef4444" }}
+                onClick={handleStopScreenShare}
+                title="Stop sharing your screen"
+              >
+                ✖️ Stop Sharing
+              </button>
+              <button
+                className={styles.bigButton}
+                style={{ background: "#6366f1" }}
+                onClick={handleCaptureScreenShotFromStream}
+                title="Capture a screenshot from your shared screen and send to AI"
+                disabled={isLoading}
+              >
+                📸 Capture Screenshot from Shared Screen
+              </button>
+            </>
+          )}
+        </div>
         <div style={{
           width: "100%",
           maxWidth: 480,
